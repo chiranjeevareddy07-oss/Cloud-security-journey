@@ -1,0 +1,140 @@
+Here's the content with the `#` heading symbols removed and formatted as plain, clean text — ready to paste in as-is.
+
+---
+
+**Day 3 – Policy JSON Anatomy**
+
+**What I learned**
+- Version, Statement, Effect, Action, Resource — what each part means
+- Deny always overrides Allow, no matter what else is allowed
+- Wildcards (`*`) mean "everything" and are risky for regular users
+- JSON is strict: exact capitalization (Version, Statement, Effect, Action, Resource), commas after every line except the last, and `Action` uses a colon (e.g. `s3:GetObject`), not a period
+- `/*` after a bucket name means "every file inside the bucket" (object-level actions like GetObject); no `/*` means "the bucket itself" (bucket-level actions like DeleteBucket, ListBucket)
+
+**My practice policy**
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::my-notes-bucket/*"
+        },
+        {
+            "Effect": "Deny",
+            "Action": "s3:DeleteBucket",
+            "Resource": "arn:aws:s3:::my-notes-bucket"
+        }
+    ]
+}
+```
+
+---
+
+**Day 4 – Writing a Narrow Policy**
+
+**What I did**
+- Wrote a custom policy (OneBucketRead) allowing only `s3:GetObject` and `s3:ListBucket`, scoped to one specific bucket
+- Registered it as a real IAM policy and attached it to test-user
+- Verified with list-attached-user-policies
+
+**What I learned**
+- Writing a policy for ONE bucket instead of "all buckets" limits the damage if credentials ever leak — like comparing a master key to one closet key
+- LocalStack Community doesn't save data permanently — restarting Docker wipes users/policies, so they need to be recreated each session
+- AWS CLI commands follow a strict structure: `aws [options] <service> <action> [parameters]` — missing the service name (like iam) breaks the command
+- Multiple actions in one policy are written as a list: `"Action": ["s3:GetObject", "s3:ListBucket"]`
+
+**My policy (s3-one-bucket-read.json)**
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": ["s3:GetObject", "s3:ListBucket"],
+            "Resource": "arn:aws:s3:::my-first-bucket/*"
+        }
+    ]
+}
+```
+
+---
+
+**Day 5 – Roles and Trust Policies**
+
+**What I did**
+- Wrote a trust policy and created my-test-role
+- Attached a permissions policy (S3 read-only) to the role
+- Verified with get-role and list-attached-role-policies
+- Ran sts get-caller-identity to check current identity
+
+**What I learned**
+- A role has two separate policies: a trust policy (who can use/assume the role) and a permissions policy (what it can do once assumed)
+- Principal is used in trust policies to specify who is allowed to assume the role
+- `"Principal": "*"` is dangerous — it means anyone can assume the role
+- `sts:AssumeRole` is the action of "putting on" a role and getting temporary credentials in return
+- A role is safer than a permanent user's access keys because its credentials expire automatically — nothing long-lived to leak
+
+---
+
+**Commands Used – Week 3**
+
+**Day 2 – Groups**
+```
+aws --endpoint-url=http://localhost:4566 iam create-group --group-name readers
+aws --endpoint-url=http://localhost:4566 iam add-user-to-group --group-name readers --user-name test-user
+aws --endpoint-url=http://localhost:4566 iam attach-group-policy --group-name readers --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+aws --endpoint-url=http://localhost:4566 iam list-groups-for-user --user-name test-user
+aws --endpoint-url=http://localhost:4566 iam list-attached-group-policies --group-name readers
+```
+
+**Day 4 – Custom Policy**
+```
+aws --endpoint-url=http://localhost:4566 iam create-policy --policy-name OneBucketRead --policy-document file://s3-one-bucket-read.json
+aws --endpoint-url=http://localhost:4566 iam attach-user-policy --user-name test-user --policy-arn "arn:aws:iam::000000000000:policy/OneBucketRead"
+aws --endpoint-url=http://localhost:4566 iam list-attached-user-policies --user-name test-user
+```
+
+**Day 5 – Roles**
+```
+aws --endpoint-url=http://localhost:4566 iam create-role --role-name my-test-role --assume-role-policy-document file://trust-policy.json
+aws --endpoint-url=http://localhost:4566 iam attach-role-policy --role-name my-test-role --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+aws --endpoint-url=http://localhost:4566 iam get-role --role-name my-test-role
+aws --endpoint-url=http://localhost:4566 iam list-attached-role-policies --role-name my-test-role
+aws --endpoint-url=http://localhost:4566 sts get-caller-identity
+```
+
+---
+
+**Policy Files – Week 3**
+
+**s3-one-bucket-read.json**
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": ["s3:GetObject", "s3:ListBucket"],
+            "Resource": "arn:aws:s3:::my-first-bucket/*"
+        }
+    ]
+}
+```
+
+**trust-policy.json**
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::000000000000:root"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+}
+```
